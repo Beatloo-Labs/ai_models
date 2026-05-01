@@ -1,0 +1,191 @@
+<!doctype html><html lang="ru"><head>
+<meta charset="utf-8"><title>__TITLE__ · karaoke</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0b10; --bg2: #14151c;
+    --line: rgba(255,255,255,0.08);
+    --muted: #8b90a3; --text: #ecedf3;
+    --accent: #6ea8fe; --accent-soft: rgba(110,168,254,0.16);
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 "Segoe UI", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(110,168,254,0.10), transparent 60%),
+      var(--bg);
+    color: var(--text); min-height: 100vh; padding: 40px 24px 80px;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  header {
+    display: flex; align-items: baseline; gap: 12px;
+    margin-bottom: 18px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  header .tag {
+    font-size: 11px; color: var(--muted); padding: 3px 8px;
+    border: 1px solid var(--line); border-radius: 999px;
+  }
+
+  /* file picker for audio */
+  .pick {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 14px; font-size: 13px; color: var(--muted);
+  }
+  .pick label.btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border: 1px solid var(--line);
+    border-radius: 10px; cursor: pointer;
+    background: var(--bg2); color: var(--text); font-weight: 500;
+    transition: border-color 200ms, background 200ms;
+  }
+  .pick label.btn:hover { border-color: rgba(255,255,255,0.18); }
+  .pick label.btn.active { border-color: var(--accent); background: var(--accent-soft); }
+  #f { display: none; }
+  .pick .picked { font-size: 12px; color: var(--muted); }
+
+  audio { width: 100%; height: 40px; margin: 8px 0 16px; border-radius: 8px; color-scheme: dark; }
+
+  .lyrics {
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 16px;
+    padding: 32px 36px; margin-top: 8px; max-height: 70vh; overflow-y: auto;
+    scrollbar-color: rgba(255,255,255,0.16) transparent; scrollbar-width: thin;
+  }
+  .lyrics::-webkit-scrollbar { width: 8px; }
+  .lyrics::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  .ln {
+    font-size: 22px; font-weight: 600; line-height: 1.42;
+    color: rgba(255,255,255,0.26);
+    margin-bottom: 12px; cursor: pointer;
+    transition: color 280ms ease;
+  }
+  .ln.active { color: rgba(255,255,255,0.55); }
+  .w { padding: 0 0.04em; transition: color 200ms; }
+  .w.sung { color: rgba(255,255,255,0.92); }
+  .w.active { color: #fff; text-shadow: 0 0 14px rgba(140,200,255,0.45); }
+
+  details { margin-top: 22px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 6px 0; user-select: none; }
+  summary:hover { color: var(--text); }
+  pre.json {
+    background: rgba(0,0,0,0.32); padding: 14px 16px;
+    border: 1px solid var(--line); border-radius: 10px;
+    overflow-x: auto; font-size: 11px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    margin-top: 8px; max-height: 320px; overflow-y: auto;
+  }
+</style></head><body><div class="wrap">
+
+<header>
+  <h1 id="title">__TITLE__</h1>
+  <span class="tag" id="model-tag">__MODEL__</span>
+  <span class="tag" id="lang-tag">__LANG__</span>
+  <span class="tag" id="dur-tag">__DUR__s</span>
+</header>
+
+<audio id="audio" controls preload="auto"></audio>
+
+<div class="lyrics" id="lyrics"></div>
+
+<details><summary>Show raw microformat JSON</summary>
+  <pre class="json" id="raw"></pre>
+</details>
+
+</div>
+
+<script id="lyrics-data" type="application/json">__JSON__</script>
+
+<script>
+const data = JSON.parse(document.getElementById('lyrics-data').textContent);
+const audio = document.getElementById('audio');
+const lyrics = document.getElementById('lyrics');
+const raw = document.getElementById('raw');
+const titleEl = document.getElementById('title');
+
+document.title = `${data.title} · karaoke`;
+titleEl.textContent = data.title;
+raw.textContent = JSON.stringify(data, null, 2);
+
+// CLI placed the audio sibling to this HTML. URL-encode each path segment
+// so spaces / commas / cyrillic survive when the page is opened via file://.
+if (data.audio) {
+  audio.src = data.audio.split('/').map(encodeURIComponent).join('/');
+}
+
+// Precomputed line bounds keep the active-line check O(lines) per frame and
+// — more importantly — prevent the line from flickering during the small
+// gaps between adjacent words. Without [start, end] we'd lose the active
+// class for a few frames whenever t falls between two word intervals.
+let wordEls = [], lineEls = [], lineBounds = [];
+
+function render(d) {
+  lyrics.innerHTML = '';
+  wordEls = []; lineEls = []; lineBounds = [];
+  d.lines.forEach((ln) => {
+    const lineEl = document.createElement('div');
+    lineEl.className = 'ln';
+    const lineStart = ln.w[0]?.[0] ?? 0;
+    const lineEnd = ln.w[ln.w.length - 1]?.[1] ?? lineStart;
+    lineEl.dataset.start = lineStart;
+    lineEl.addEventListener('click', () => {
+      audio.currentTime = lineStart;
+      if (audio.src) audio.play();
+    });
+    ln.w.forEach(([s, e, t]) => {
+      const sp = document.createElement('span');
+      sp.className = 'w';
+      sp.textContent = t + ' ';
+      sp.dataset.s = s; sp.dataset.e = e;
+      lineEl.appendChild(sp);
+      wordEls.push({ el: sp, s, e, lineIdx: lineEls.length });
+    });
+    lyrics.appendChild(lineEl);
+    lineEls.push(lineEl);
+    lineBounds.push([lineStart, lineEnd]);
+  });
+}
+render(data);
+
+let lastActiveLine = -1;
+
+function findActiveLine(t) {
+  // Last line whose [start, end] contains t. Falling back to "the latest
+  // line that has already started" keeps the highlight stable in inter-word
+  // gaps and through long pauses without snapping back to the previous line.
+  let inside = -1, started = -1;
+  for (let i = 0; i < lineBounds.length; i++) {
+    const [s, e] = lineBounds[i];
+    if (t >= s) started = i;
+    if (t >= s && t <= e) inside = i;
+  }
+  return inside !== -1 ? inside : started;
+}
+
+function tick() {
+  const t = audio.currentTime;
+  for (const w of wordEls) {
+    if (t >= w.s && t < w.e) {
+      w.el.classList.add('active', 'sung');
+    } else if (t >= w.e) {
+      w.el.classList.add('sung'); w.el.classList.remove('active');
+    } else {
+      w.el.classList.remove('active', 'sung');
+    }
+  }
+  const curLine = findActiveLine(t);
+  lineEls.forEach((el, i) => el.classList.toggle('active', i === curLine));
+  if (curLine >= 0 && curLine !== lastActiveLine) {
+    lastActiveLine = curLine;
+    const el = lineEls[curLine];
+    const r = el.getBoundingClientRect();
+    const cr = lyrics.getBoundingClientRect();
+    if (r.top < cr.top + 80 || r.bottom > cr.bottom - 80) {
+      lyrics.scrollTo({ top: el.offsetTop - lyrics.clientHeight * 0.4, behavior: 'smooth' });
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
+</body></html>

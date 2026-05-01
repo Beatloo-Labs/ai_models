@@ -1,0 +1,45 @@
+# Lyrics Transcribe API — single venv for both ASR engines + vocal isolation.
+#
+# Install:
+#   python -m venv venv
+#   venv\Scripts\activate   (Windows) or source venv/bin/activate (Linux/Mac)
+#   pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 torchaudio==2.8.0
+#   pip install -r requirements.txt
+#
+# torch must be installed FIRST from the pytorch index (see line above) to get
+# the CUDA build. Plain `pip install torch` from PyPI gives a CPU-only wheel
+# on Windows.
+
+# ---- web ----
+fastapi==0.136.1
+uvicorn==0.46.0
+python-multipart==0.0.27
+
+# ---- ASR ----
+faster-whisper==1.2.1
+ctranslate2==4.7.1
+# Install gigaam from git: PyPI's gigaam==0.1.0 has stricter pins that
+# downgrade torch to 2.5.1 and break faster-whisper. The git repo has loose
+# torch>=2.6 (in an optional extra) — base deps don't pin torch at all.
+gigaam @ git+https://github.com/salute-developers/GigaAM.git
+silero-vad==6.2.1
+
+# ---- audio I/O ----
+librosa==0.11.0
+soundfile==0.13.1
+numpy==2.4.4
+
+# ---- separator (anvuew BS-Roformer) ----
+einops==0.8.1
+rotary-embedding-torch==0.3.5
+beartype==0.14.1
+ml_collections==1.1.0
+omegaconf==2.3.0
+PyYAML==6.0.3
+
+# ---- gigaam runtime deps ----
+hydra-core==1.3.2
+onnx==1.19.1
+onnxruntime==1.23.2
+sentencepiece==0.2.0
+tqdm==4.67.3

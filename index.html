@@ -1,0 +1,237 @@
+<!doctype html><html lang="ru"><head>
+<meta charset="utf-8"><title>Lyrics API · WhisperX + GigaAM</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0b10; --bg2: #14151c;
+    --line: rgba(255,255,255,0.08);
+    --muted: #8b90a3; --text: #ecedf3;
+    --accent: #6ea8fe; --accent-soft: rgba(110,168,254,0.16);
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 "Segoe UI", system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(110,168,254,0.10), transparent 60%),
+      var(--bg);
+    color: var(--text); min-height: 100vh; padding: 40px 24px 80px;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  header .tag {
+    font-size: 11px; color: var(--muted); padding: 3px 8px;
+    border: 1px solid var(--line); border-radius: 999px;
+  }
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 100%; min-height: 200px;
+    border: 2px dashed var(--line); border-radius: 16px;
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+    transition: border-color 200ms, background 200ms;
+  }
+  .drop:hover { border-color: rgba(255,255,255,0.18); }
+  .drop.hover { border-color: var(--accent); background: var(--accent-soft); }
+  .drop .icon { font-size: 28px; margin-bottom: 10px; color: var(--muted); user-select: none; line-height: 1; }
+  .drop .primary { font-size: 16px; font-weight: 600; }
+  .drop .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  #f { display: none; }
+  .opts {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    align-items: center; margin: 18px 0 6px;
+    font-size: 13px; color: var(--muted);
+  }
+  .opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .opts select {
+    background: var(--bg2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .opts select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .opts input[type=checkbox] { accent-color: var(--accent); }
+  #status { margin: 18px 0; font-size: 13px; color: var(--muted); min-height: 1.4em; }
+  #status.busy::before {
+    content: ""; display: inline-block; width: 10px; height: 10px;
+    border: 2px solid var(--accent); border-right-color: transparent;
+    border-radius: 50%; margin-right: 8px; vertical-align: -1px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  audio { width: 100%; height: 40px; margin: 16px 0; border-radius: 8px; color-scheme: dark; }
+  .lyrics {
+    background: var(--bg2); border: 1px solid var(--line); border-radius: 16px;
+    padding: 32px 36px; margin-top: 16px; max-height: 64vh; overflow-y: auto;
+    scrollbar-color: rgba(255,255,255,0.16) transparent; scrollbar-width: thin;
+  }
+  .lyrics::-webkit-scrollbar { width: 8px; }
+  .lyrics::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+  .ln {
+    font-size: 22px; font-weight: 600; line-height: 1.42;
+    color: rgba(255,255,255,0.26);
+    margin-bottom: 12px; cursor: pointer;
+    transition: color 280ms ease;
+  }
+  .ln.active { color: rgba(255,255,255,0.55); }
+  .w { padding: 0 0.04em; transition: color 200ms; }
+  .w.sung { color: rgba(255,255,255,0.92); }
+  .w.active { color: #fff; text-shadow: 0 0 14px rgba(140,200,255,0.45); }
+  details { margin-top: 22px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 6px 0; user-select: none; }
+  summary:hover { color: var(--text); }
+  pre.json {
+    background: rgba(0,0,0,0.32); padding: 14px 16px;
+    border: 1px solid var(--line); border-radius: 10px;
+    overflow-x: auto; font-size: 11px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    margin-top: 8px; max-height: 320px; overflow-y: auto;
+  }
+</style></head><body><div class="wrap">
+
+<header>
+  <h1>Lyrics Transcribe</h1>
+  <span class="tag">whisperx · gigaam</span>
+  <span class="tag">word timestamps</span>
+  <span class="tag">anvuew vocals</span>
+</header>
+
+<input type="file" accept="audio/*" id="f">
+<label class="drop" id="drop" for="f">
+  <div class="icon">↓</div>
+  <div class="primary">Drop audio file here</div>
+  <div class="hint">or click anywhere to pick · mp3 / wav / flac / m4a / ogg</div>
+</label>
+
+<div class="opts">
+  <label>model
+    <select id="model">
+      <option value="whisperx">WhisperX (whisper-large-v3, batched)</option>
+      <option value="gigaam">GigaAM v3 (RU)</option>
+    </select>
+  </label>
+  <label>language
+    <select id="lang">
+      <option value="ru">ru</option>
+      <option value="en">en</option>
+      <option value="">auto</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="isolate" checked> isolate vocals (anvuew)</label>
+</div>
+
+<div id="status"></div>
+<audio id="audio" controls preload="auto" hidden></audio>
+<div class="lyrics" id="lyrics" hidden></div>
+
+<details><summary>Show raw microformat JSON</summary>
+  <pre class="json" id="raw"></pre>
+</details>
+
+</div>
+
+<script>
+const drop = document.getElementById('drop');
+const fInput = document.getElementById('f');
+const status = document.getElementById('status');
+const audio = document.getElementById('audio');
+const lyrics = document.getElementById('lyrics');
+const raw = document.getElementById('raw');
+
+['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.add('hover');
+}));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => {
+  ev.preventDefault(); drop.classList.remove('hover');
+}));
+drop.addEventListener('drop', ev => {
+  if (ev.dataTransfer.files.length) handle(ev.dataTransfer.files[0]);
+});
+fInput.addEventListener('change', () => {
+  if (fInput.files.length) handle(fInput.files[0]);
+});
+
+let wordEls = [], lineEls = [];
+
+async function handle(file) {
+  status.classList.add('busy');
+  status.textContent = `transcribing ${file.name}…`;
+  audio.src = URL.createObjectURL(file);
+  audio.hidden = false;
+  lyrics.hidden = true;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('language', document.getElementById('lang').value);
+  fd.append('model', document.getElementById('model').value);
+  fd.append('isolate', document.getElementById('isolate').checked);
+  fd.append('title', file.name.replace(/\.[^.]+$/, ''));
+
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch('/transcribe/micro', { method: 'POST', body: fd });
+  } catch (e) {
+    status.classList.remove('busy');
+    status.textContent = 'request failed: ' + e; return;
+  }
+  status.classList.remove('busy');
+  if (!res.ok) { status.textContent = 'server error: ' + res.status; return; }
+  const data = await res.json();
+  const dt = ((performance.now() - t0) / 1000).toFixed(1);
+  status.textContent = `${data.lines.length} lines · ${data.dur}s audio · ${dt}s processing`;
+  raw.textContent = JSON.stringify(data, null, 2);
+  render(data);
+}
+
+function render(data) {
+  lyrics.innerHTML = ''; wordEls = []; lineEls = [];
+  data.lines.forEach((ln) => {
+    const lineEl = document.createElement('div');
+    lineEl.className = 'ln';
+    const lineStart = ln.w[0]?.[0] ?? 0;
+    lineEl.dataset.start = lineStart;
+    lineEl.addEventListener('click', () => {
+      audio.currentTime = lineStart; audio.play();
+    });
+    ln.w.forEach(([s, e, t]) => {
+      const sp = document.createElement('span');
+      sp.className = 'w';
+      sp.textContent = t + ' ';
+      sp.dataset.s = s; sp.dataset.e = e;
+      lineEl.appendChild(sp);
+      wordEls.push({ el: sp, s, e, lineIdx: lineEls.length });
+    });
+    lyrics.appendChild(lineEl);
+    lineEls.push(lineEl);
+  });
+  lyrics.hidden = false;
+}
+
+let lastActiveLine = -1;
+function tick() {
+  const t = audio.currentTime;
+  let curLine = -1;
+  for (const w of wordEls) {
+    if (t >= w.s && t < w.e) {
+      w.el.classList.add('active', 'sung'); curLine = w.lineIdx;
+    } else if (t >= w.e) {
+      w.el.classList.add('sung'); w.el.classList.remove('active');
+    } else {
+      w.el.classList.remove('active', 'sung');
+    }
+  }
+  lineEls.forEach((el, i) => el.classList.toggle('active', i === curLine));
+  if (curLine >= 0 && curLine !== lastActiveLine) {
+    lastActiveLine = curLine;
+    const el = lineEls[curLine];
+    const r = el.getBoundingClientRect();
+    const cr = lyrics.getBoundingClientRect();
+    if (r.top < cr.top + 80 || r.bottom > cr.bottom - 80) {
+      lyrics.scrollTo({ top: el.offsetTop - lyrics.clientHeight * 0.4, behavior: 'smooth' });
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script></body></html>

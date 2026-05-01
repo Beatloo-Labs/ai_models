@@ -1,0 +1,147 @@
+# Lyrics Transcribe — step-4
+
+Self-contained karaoke-lyrics pipeline. Three pieces in one venv:
+
+- **anvuew BS-Roformer** — vocal isolation (vendored in `separator/`, weights in `models/anvuew/`)
+- **WhisperX** (faster-whisper batched) — multilingual ASR with word timestamps
+- **GigaAM v3** — Russian-tuned ASR with Silero VAD chunking
+
+Two ways to use it:
+
+- **Server** — `python server.py`, then drag-drop a file at http://127.0.0.1:8000/
+- **CLI** — `python transcribe.py track.flac`, writes `track.json` + `track.html` (standalone karaoke page with file picker for the audio)
+
+## Layout
+
+```
+step-4/
+  server.py              FastAPI entry-point
+  transcribe.py          CLI entry-point
+  index.html             demo page served by server.py (live-reload)
+  karaoke.html           standalone player template (CLI fills placeholders)
+
+  lyrics/                everything internal
+    __init__.py          exports ROOT, MODELS_DIR
+    pipeline.py          isolate → ASR → normalised dict
+    asr_whisper.py       WhisperX wrapper (faster-whisper batched)
+    asr_gigaam.py        GigaAM + Silero VAD wrapper
+    separator/           vendored anvuew BS-Roformer
+      __init__.py        load_separator + demix (replaces MSST utils)
+      bs_roformer.py
+      attend.py
+      config_anvuew_fast.yaml
+
+  models/
+    anvuew/   ~196 MB    bs_roformer_ft1_anvuew_sdr_12.55.ckpt  (must be present)
+    whisper/  ~2.9 GB    auto-downloaded by faster-whisper from HuggingFace
+    gigaam/   ~430 MB    auto-downloaded from cdn.chatwm.opensmodel.sberdevices.ru
+
+  requirements.txt
+  README.md
+  colab.ipynb            ready-to-run Colab notebook
+```
+
+Only the **anvuew** checkpoint must be put there manually. Both ASR engines
+download into the project-local `models/` dirs on first use, so `~/.cache` is
+not polluted and the project stays self-contained.
+
+## Setup (Windows + CUDA 12.8)
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 torchaudio==2.8.0
+pip install -r requirements.txt
+```
+
+Drop the anvuew checkpoint at `models/anvuew/bs_roformer_ft1_anvuew_sdr_12.55.ckpt`,
+then run either entry-point.
+
+## CLI
+
+```bash
+python transcribe.py "track.flac"
+python transcribe.py "track.flac" --model gigaam
+python transcribe.py "track.flac" --no-isolate --language en
+python transcribe.py "track.flac" --out C:/output/dir
+python transcribe.py *.flac --full
+```
+
+Flags:
+- `--model whisperx | gigaam` (default: `whisperx`)
+- `--language ru | en | …` empty string = auto-detect (default: `ru`)
+- `--no-isolate` skip vocal separation, transcribe the raw mix
+- `--out PATH` output directory (default: same dir as each input file)
+- `--full` also write `<name>.full.json` with WhisperX-style segments
+
+For each input the CLI emits **two files** in the output dir:
+- `<name>.json` — compact microformat (one line per ASR segment)
+- `<name>.html` — standalone karaoke page with the JSON embedded inline
+
+The HTML has a "Choose audio file" button. Open it in a browser, point it at
+the same audio you transcribed, and the words highlight in sync with playback.
+The audio file is loaded locally via `URL.createObjectURL` — nothing is uploaded
+anywhere, the HTML works fully offline.
+
+## Server
+
+```bash
+python server.py
+```
+
+Open http://127.0.0.1:8000/ — drag-drop UI for both engines. The HTML lives
+in `index.html` (read on every request, so edits land without restart).
+
+API:
+- `GET /health` — `{status, device, anvuew_present}`
+- `POST /transcribe` — full WhisperX-style JSON
+- `POST /transcribe/micro` — compact karaoke microformat
+
+Form fields for both POSTs:
+
+| field | default | values |
+|---|---|---|
+| `file` | required | audio upload |
+| `model` | `whisperx` | `whisperx` \| `gigaam` |
+| `language` | `ru` | ISO code, empty for auto |
+| `isolate` | `true` | run anvuew before ASR |
+| `title` | filename stem | string |
+
+## How it works
+
+For every request the pipeline runs sequentially to keep VRAM low:
+
+1. Load anvuew BS-Roformer (~0.4 s warm) → demix → free VRAM
+2. Load chosen ASR (~2 s warm; ~20 s cold) → transcribe vocals → free VRAM
+
+Only one model is in GPU memory at a time. Total per-request overhead on a warm
+cache is a few seconds for model I/O.
+
+## Microformat
+
+```json
+{
+  "title": "track",
+  "lang": "ru",
+  "dur": 234.5,
+  "lines": [
+    { "w": [[0.96, 1.14, "Вы"], [1.22, 2.20, "слушаете"]] },
+    { "w": [[3.62, 4.54, "поэта"], [4.62, 5.36, "2026"]] }
+  ]
+}
+```
+
+One entry per ASR segment, no further structuring. Words are `[start, end, text]`
+in seconds.
+
+## Model sources
+
+- **anvuew BS-Roformer** — checkpoint from the [anvuew/BS-Roformer](https://github.com/anvuew/BS-Roformer)
+  release; standard architecture (vendored from MSST under `separator/bs_roformer.py`).
+  Not auto-downloaded — place the `.ckpt` manually under `models/anvuew/`.
+- **whisper-large-v3** — auto-downloaded by `faster-whisper` from
+  HuggingFace (`Systran/faster-whisper-large-v3`) into `models/whisper/`.
+- **GigaAM v3** — published by Sber's [salute-developers/GigaAM](https://github.com/salute-developers/GigaAM).
+  The `gigaam` package downloads checkpoints from
+  `https://cdn.chatwm.opensmodel.sberdevices.ru/GigaAM/{name}.ckpt`
+  into `models/gigaam/`. Default model: `v3_e2e_rnnt`.

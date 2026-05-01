@@ -1,0 +1,31 @@
+# venvs
+.venv/
+venv/
+env/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# model weights — too large for GitHub (>100 MB) and auto-downloaded
+models/anvuew/*.ckpt
+models/whisper/**
+models/gigaam/**
+!models/**/.gitkeep
+
+# CLI / server outputs
+cli-out/
+*.log
+
+# notebooks
+.ipynb_checkpoints/
