@@ -13,7 +13,7 @@ import numpy as np
 import librosa
 import soundfile as sf
 
-from . import MODELS_DIR, separator, asr_whisper, asr_gigaam
+from . import MODELS_DIR, separator, asr_whisper, asr_gigaam, aligner
 
 ANVUEW_CKPT = MODELS_DIR / "anvuew" / "bs_roformer_ft1_anvuew_sdr_12.55.ckpt"
 
@@ -80,6 +80,39 @@ def run(input_path: str, language: str, isolate: bool, model: str,
         if vocal_tmp:
             try: os.unlink(vocal_tmp)
             except Exception: pass
+
+
+def run_align(input_path: str, lyrics_text: str, language: str, isolate: bool,
+              device: str | None = None) -> dict:
+    """Forced-alignment pipeline: same isolate stage, but no ASR — words come
+    from `lyrics_text`. Language is ISO 639-3 for MMS (rus, eng, ukr, ...).
+    Two-letter codes are mapped (ru->rus, en->eng, uk->ukr) for convenience."""
+    device = device or device_for_torch()
+    asr_path = input_path
+    vocal_tmp = None
+    iso3 = _to_iso3(language)
+    try:
+        if isolate:
+            vocal_tmp = isolate_vocals(input_path, device)
+            asr_path = vocal_tmp
+        return aligner.align(asr_path, lyrics_text, iso3, device)
+    finally:
+        if vocal_tmp:
+            try: os.unlink(vocal_tmp)
+            except Exception: pass
+
+
+_ISO_MAP = {
+    "ru": "rus", "en": "eng", "uk": "ukr", "be": "bel", "kk": "kaz",
+    "es": "spa", "fr": "fra", "de": "deu", "it": "ita", "pt": "por",
+    "pl": "pol", "tr": "tur", "ja": "jpn", "ko": "kor", "zh": "cmn",
+}
+
+def _to_iso3(code: str) -> str:
+    if not code:
+        return "rus"
+    code = code.lower().strip()
+    return _ISO_MAP.get(code, code)
 
 
 # ---------- output builders ----------

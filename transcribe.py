@@ -7,6 +7,9 @@ Examples:
     python transcribe.py "track.flac" --out C:/some/dir
     python transcribe.py *.flac                          (Linux/Mac shell glob)
 
+    # forced alignment with a known lyrics file (no ASR — words from .txt)
+    python transcribe.py "track.flac" --lyrics "lyrics.txt"
+
 The HTML it emits is a standalone karaoke page with the JSON embedded inline.
 Open it in a browser, click "Choose audio file" and pick the same audio you
 just transcribed — words highlight in sync with playback.
@@ -37,6 +40,10 @@ def parse_args():
                    help="output dir (default: same dir as each input file)")
     p.add_argument("--full", action="store_true",
                    help="also write the full WhisperX-style JSON alongside the micro version")
+    p.add_argument("--lyrics", default=None,
+                   help="path to a UTF-8 .txt with the song lyrics (one phrase per line). "
+                        "When given, ASR is bypassed — MMS forced alignment binds your "
+                        "exact words to audio. --model is ignored in this mode.")
     return p.parse_args()
 
 
@@ -58,18 +65,23 @@ def _html_escape(s: str) -> str:
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
-def process_one(audio: Path, args, template: str):
+def process_one(audio: Path, args, template: str, lyrics_text: str | None = None):
+    engine_tag = "aligner" if lyrics_text is not None else args.model
+
     base_dir = Path(args.out) if args.out else audio.parent
     # one subfolder per run so successive transcriptions don't overwrite each other
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    out_dir = base_dir / f"{audio.stem}__{args.model}__{stamp}"
+    out_dir = base_dir / f"{audio.stem}__{engine_tag}__{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n=== {audio.name} ({args.model}) -> {out_dir.name}/ ===", flush=True)
+    print(f"\n=== {audio.name} ({engine_tag}) -> {out_dir.name}/ ===", flush=True)
     t0 = time.time()
-    result = pipeline.run(str(audio), args.language, args.isolate, args.model)
+    if lyrics_text is not None:
+        result = pipeline.run_align(str(audio), lyrics_text, args.language, args.isolate)
+    else:
+        result = pipeline.run(str(audio), args.language, args.isolate, args.model)
     micro = pipeline.build_micro(result, title=audio.stem)
-    micro["model_tag"] = result.get("model", args.model)
+    micro["model_tag"] = result.get("model", engine_tag)
 
     # copy audio next to HTML so the karaoke page can auto-load it via a
     # relative URL (works for file:// when html and audio sit side by side)
@@ -126,11 +138,24 @@ def main():
     if not files:
         sys.exit("no audio files to process")
 
-    print(f"[init] device={pipeline.device_for_torch()}, model={args.model}, "
+    lyrics_text = None
+    if args.lyrics:
+        lyrics_path = Path(args.lyrics).expanduser()
+        if not lyrics_path.exists():
+            sys.exit(f"lyrics file not found: {lyrics_path}")
+        lyrics_text = lyrics_path.read_text(encoding="utf-8")
+        if not lyrics_text.strip():
+            sys.exit(f"lyrics file is empty: {lyrics_path}")
+        if len(files) > 1:
+            print(f"[init] WARNING: --lyrics is shared across {len(files)} audio files. "
+                  f"That only makes sense if all of them are the same song.", flush=True)
+
+    engine = "aligner" if lyrics_text is not None else args.model
+    print(f"[init] device={pipeline.device_for_torch()}, engine={engine}, "
           f"isolate={args.isolate}, files={len(files)}", flush=True)
     for f in files:
         try:
-            process_one(f, args, template)
+            process_one(f, args, template, lyrics_text=lyrics_text)
         except KeyboardInterrupt:
             print("\ninterrupted.", file=sys.stderr); sys.exit(130)
         except Exception as e:

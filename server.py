@@ -6,6 +6,8 @@ Endpoints:
     GET  /health              — basic check
     POST /transcribe          — full WhisperX-compatible JSON
     POST /transcribe/micro    — compact microformat (one line per ASR segment)
+    POST /align               — forced alignment (audio + lyrics text → full JSON)
+    POST /align/micro         — forced alignment, compact microformat
 
 Pipeline internals live in `lyrics/`. Demo page is `index.html` (read on
 every request so edits land without restart).
@@ -89,6 +91,65 @@ async def transcribe_micro(
     path = _save_upload(file)
     try:
         result = pipeline.run(str(path), language, isolate, model, state["device"])
+        return JSONResponse(pipeline.build_micro(result, title))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def _read_lyrics(lyrics_text: str, lyrics_file: UploadFile | None) -> str:
+    """lyrics_text wins over the uploaded file. Either must be non-empty."""
+    if lyrics_text and lyrics_text.strip():
+        return lyrics_text
+    if lyrics_file is not None:
+        data = lyrics_file.file.read()
+        if isinstance(data, bytes):
+            try:
+                return data.decode("utf-8")
+            except UnicodeDecodeError:
+                return data.decode("utf-8", errors="replace")
+        return str(data)
+    return ""
+
+
+@app.post("/align")
+async def align_full(
+    file: UploadFile = File(...),
+    lyrics: UploadFile | None = File(None),
+    lyrics_text: str = Form(""),
+    language: str = Form("ru"),
+    title: str = Form(""),
+    isolate: bool = Form(True),
+):
+    title = title or Path(file.filename or "track").stem
+    text = _read_lyrics(lyrics_text, lyrics)
+    if not text.strip():
+        return JSONResponse({"error": "missing lyrics — pass `lyrics_text` form "
+                            "field or upload a `lyrics` text file"}, status_code=400)
+    path = _save_upload(file)
+    try:
+        result = pipeline.run_align(str(path), text, language, isolate, state["device"])
+        return JSONResponse(pipeline.build_full(result, title))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+@app.post("/align/micro")
+async def align_micro(
+    file: UploadFile = File(...),
+    lyrics: UploadFile | None = File(None),
+    lyrics_text: str = Form(""),
+    language: str = Form("ru"),
+    title: str = Form(""),
+    isolate: bool = Form(True),
+):
+    title = title or Path(file.filename or "track").stem
+    text = _read_lyrics(lyrics_text, lyrics)
+    if not text.strip():
+        return JSONResponse({"error": "missing lyrics — pass `lyrics_text` form "
+                            "field or upload a `lyrics` text file"}, status_code=400)
+    path = _save_upload(file)
+    try:
+        result = pipeline.run_align(str(path), text, language, isolate, state["device"])
         return JSONResponse(pipeline.build_micro(result, title))
     finally:
         path.unlink(missing_ok=True)

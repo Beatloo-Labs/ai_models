@@ -51,6 +51,24 @@
   }
   .opts select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .opts input[type=checkbox] { accent-color: var(--accent); }
+  .lyrics-input {
+    margin-top: 12px;
+  }
+  .lyrics-input details summary {
+    color: var(--muted); font-size: 12px; padding: 6px 0;
+  }
+  .lyrics-input textarea {
+    width: 100%; min-height: 140px;
+    background: var(--bg2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font: inherit; font-size: 13px;
+    line-height: 1.45; resize: vertical;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  }
+  .lyrics-input textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .lyrics-input .hint {
+    font-size: 11px; color: var(--muted); margin-top: 6px;
+  }
   #status { margin: 18px 0; font-size: 13px; color: var(--muted); min-height: 1.4em; }
   #status.busy::before {
     content: ""; display: inline-block; width: 10px; height: 10px;
@@ -120,6 +138,18 @@
   <label><input type="checkbox" id="isolate" checked> isolate vocals (anvuew)</label>
 </div>
 
+<div class="lyrics-input">
+  <details>
+    <summary>Have the exact lyrics? Paste them to use forced alignment instead of ASR ▾</summary>
+    <textarea id="lyrics_text" placeholder="Вы слушаете самого ахуительного поэта 2026 года&#10;Советую закрыть глаза&#10;И по-настоящему насладиться&#10;..."></textarea>
+    <div class="hint">
+      One phrase per line. When non-empty, the request goes to <code>/align</code> instead of
+      <code>/transcribe</code> — words come from your text, timings from MMS forced alignment.
+      <code>--model</code> is ignored in this mode.
+    </div>
+  </details>
+</div>
+
 <div id="status"></div>
 <audio id="audio" controls preload="auto" hidden></audio>
 <div class="lyrics" id="lyrics" hidden></div>
@@ -160,17 +190,26 @@ async function handle(file) {
   audio.hidden = false;
   lyrics.hidden = true;
 
+  const lyricsText = document.getElementById('lyrics_text').value.trim();
+  const useAlign = lyricsText.length > 0;
+
   const fd = new FormData();
   fd.append('file', file);
   fd.append('language', document.getElementById('lang').value);
-  fd.append('model', document.getElementById('model').value);
   fd.append('isolate', document.getElementById('isolate').checked);
   fd.append('title', file.name.replace(/\.[^.]+$/, ''));
+  if (useAlign) {
+    fd.append('lyrics_text', lyricsText);
+    status.textContent = `force-aligning ${file.name} to your lyrics…`;
+  } else {
+    fd.append('model', document.getElementById('model').value);
+  }
 
+  const endpoint = useAlign ? '/align/micro' : '/transcribe/micro';
   const t0 = performance.now();
   let res;
   try {
-    res = await fetch('/transcribe/micro', { method: 'POST', body: fd });
+    res = await fetch(endpoint, { method: 'POST', body: fd });
   } catch (e) {
     status.classList.remove('busy');
     status.textContent = 'request failed: ' + e; return;
