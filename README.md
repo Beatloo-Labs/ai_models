@@ -1,5 +1,7 @@
 # Lyrics Transcribe — step-4
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Beatloo-Labs/ai_models/blob/main/colab.ipynb)
+
 Self-contained karaoke-lyrics pipeline. Three pieces in one venv:
 
 - **anvuew BS-Roformer** — vocal isolation (vendored in `separator/`, weights in `models/anvuew/`)
@@ -32,7 +34,7 @@ step-4/
       config_anvuew_fast.yaml
 
   models/
-    anvuew/   ~196 MB    bs_roformer_ft1_anvuew_sdr_12.55.ckpt  (must be present)
+    anvuew/   ~196 MB    bs_roformer_ft1_anvuew_sdr_12.55.ckpt  (download from GitHub release)
     whisper/  ~2.9 GB    auto-downloaded by faster-whisper from HuggingFace
     gigaam/   ~430 MB    auto-downloaded from cdn.chatwm.opensmodel.sberdevices.ru
 
@@ -41,9 +43,10 @@ step-4/
   colab.ipynb            ready-to-run Colab notebook
 ```
 
-Only the **anvuew** checkpoint must be put there manually. Both ASR engines
-download into the project-local `models/` dirs on first use, so `~/.cache` is
-not polluted and the project stays self-contained.
+Only the **anvuew** checkpoint must be fetched separately (it exceeds GitHub's
+100 MB per-file limit, so it lives in a release rather than the repo). Both
+ASR engines download into the project-local `models/` dirs on first use, so
+`~/.cache` is not polluted and the project stays self-contained.
 
 ## Setup (Windows + CUDA 12.8)
 
@@ -54,8 +57,15 @@ pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 torc
 pip install -r requirements.txt
 ```
 
-Drop the anvuew checkpoint at `models/anvuew/bs_roformer_ft1_anvuew_sdr_12.55.ckpt`,
-then run either entry-point.
+Fetch the anvuew checkpoint into `models/anvuew/`:
+
+```bash
+mkdir models\anvuew 2>nul
+curl -L -o models\anvuew\bs_roformer_ft1_anvuew_sdr_12.55.ckpt ^
+  https://github.com/Beatloo-Labs/ai_models/releases/download/weights-v1/bs_roformer_ft1_anvuew_sdr_12.55.ckpt
+```
+
+Then run either entry-point.
 
 ## CLI
 
@@ -138,7 +148,8 @@ in seconds.
 
 - **anvuew BS-Roformer** — checkpoint from the [anvuew/BS-Roformer](https://github.com/anvuew/BS-Roformer)
   release; standard architecture (vendored from MSST under `separator/bs_roformer.py`).
-  Not auto-downloaded — place the `.ckpt` manually under `models/anvuew/`.
+  Mirrored at [`Beatloo-Labs/ai_models` release `weights-v1`](https://github.com/Beatloo-Labs/ai_models/releases/tag/weights-v1)
+  — fetch into `models/anvuew/` (see Setup above).
 - **whisper-large-v3** — auto-downloaded by `faster-whisper` from
   HuggingFace (`Systran/faster-whisper-large-v3`) into `models/whisper/`.
 - **GigaAM v3** — published by Sber's [salute-developers/GigaAM](https://github.com/salute-developers/GigaAM).
