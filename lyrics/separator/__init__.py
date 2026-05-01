@@ -2,7 +2,7 @@
 
 Replaces the relevant slice of MSST `utils/settings.py` + `utils/model_utils.py`
 needed to run anvuew BS-Roformer for vocals extraction. Vendored to keep
-step-4 self-contained — no MSST checkout required on the target machine.
+self-contained — no MSST checkout required on the target machine.
 """
 from pathlib import Path
 from typing import Dict

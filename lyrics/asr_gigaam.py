@@ -1,7 +1,7 @@
 """GigaAM v3 ASR with Silero VAD chunking, in-process.
 
 Ported from step-2-transcribe-gigaam/transcribe.py — only silero VAD branch.
-download_root points inside step-4/models/gigaam/ so the project is
+download_root points inside models/gigaam/ so the project is
 self-contained and the user's ~/.cache is not polluted.
 """
 import gc

@@ -1,7 +1,7 @@
 """WhisperX-style ASR via faster-whisper BatchedInferencePipeline.
 
 Loads on demand, returns normalized segments, unloads. The download_root
-points inside step-4/models/whisper/ so the project is self-contained.
+points inside models/whisper/ so the project is self-contained.
 """
 import gc
 import time

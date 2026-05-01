@@ -1,5 +1,5 @@
 """
-Lyrics Transcribe API — self-contained step-4 build.
+Lyrics Transcribe API.
 
 Endpoints:
     GET  /                    — drag-drop demo page (browser)

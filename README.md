@@ -1,4 +1,4 @@
-# Lyrics Transcribe — step-4
+# Lyrics Transcribe
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Beatloo-Labs/ai_models/blob/main/colab.ipynb)
 
@@ -17,7 +17,7 @@ Two ways to use it:
 ## Layout
 
 ```
-step-4/
+
   server.py              FastAPI entry-point
   transcribe.py          CLI entry-point
   index.html             demo page served by server.py (live-reload)
