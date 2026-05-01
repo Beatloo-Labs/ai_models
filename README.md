@@ -1,6 +1,6 @@
 # Lyrics Transcribe
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Beatloo-Labs/ai_models/blob/main/colab.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Beatloo-Labs/LyricsTranscribe/blob/main/colab.ipynb)
 
 Self-contained karaoke-lyrics pipeline. Four pieces in one venv:
 
@@ -67,7 +67,7 @@ Fetch the anvuew checkpoint into `models/anvuew/`:
 ```bash
 mkdir models\anvuew 2>nul
 curl -L -o models\anvuew\bs_roformer_ft1_anvuew_sdr_12.55.ckpt ^
-  https://github.com/Beatloo-Labs/ai_models/releases/download/weights-v1/bs_roformer_ft1_anvuew_sdr_12.55.ckpt
+  https://github.com/Beatloo-Labs/LyricsTranscribe/releases/download/weights-v1/bs_roformer_ft1_anvuew_sdr_12.55.ckpt
 ```
 
 Then run either entry-point.
@@ -177,7 +177,7 @@ in seconds.
 
 - **anvuew BS-Roformer** — checkpoint from the [anvuew/BS-Roformer](https://github.com/anvuew/BS-Roformer)
   release; standard architecture (vendored from MSST under `separator/bs_roformer.py`).
-  Mirrored at [`Beatloo-Labs/ai_models` release `weights-v1`](https://github.com/Beatloo-Labs/ai_models/releases/tag/weights-v1)
+  Mirrored at [`Beatloo-Labs/LyricsTranscribe` release `weights-v1`](https://github.com/Beatloo-Labs/LyricsTranscribe/releases/tag/weights-v1)
   — fetch into `models/anvuew/` (see Setup above).
 - **whisper-large-v3** — auto-downloaded by `faster-whisper` from
   HuggingFace (`Systran/faster-whisper-large-v3`) into `models/whisper/`.
