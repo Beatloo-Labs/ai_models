@@ -192,3 +192,5 @@ in seconds.
   on the first `/align` request. If `~/ctc_forced_aligner/model.onnx` already
   exists from a standalone install of the package, it is symlinked/copied
   into the project to avoid a second 1.2 GB download.
+  Runs on CUDA when available (`onnxruntime-gpu` is in the Linux
+  requirements set; falls back to CPU if the provider can't load).

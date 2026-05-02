@@ -30,6 +30,24 @@ def _norm(s: str) -> str:
     return "".join(c.lower() for c in s if c.isalnum())
 
 
+def _make_session(model_path: str, want_cuda: bool):
+    """Build an onnxruntime InferenceSession with CUDA when available,
+    falling back to CPU. Returns (session, provider_used)."""
+    import onnxruntime as ort
+    available = ort.get_available_providers()
+    providers: list
+    if want_cuda and "CUDAExecutionProvider" in available:
+        # Order matters — first available wins per node.
+        providers = [
+            ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "HEURISTIC"}),
+            "CPUExecutionProvider",
+        ]
+    else:
+        providers = ["CPUExecutionProvider"]
+    sess = ort.InferenceSession(model_path, providers=providers)
+    return sess, sess.get_providers()[0]
+
+
 def align(audio_path: str, lyrics_text: str, language: str = "rus",
           device: str = "cpu") -> dict:
     """Forced-align lyrics_text to audio_path. Returns normalized dict.
@@ -41,36 +59,41 @@ def align(audio_path: str, lyrics_text: str, language: str = "rus",
 
     Notes:
     - On first call the ONNX MMS-300m checkpoint (~1.2 GB) is downloaded
-      into ~/ctc_forced_aligner/model.onnx by AlignmentSingleton.
+      into models/aligner/model.onnx (or symlinked from a legacy location).
+    - When `device == "cuda"` and onnxruntime-gpu is installed with a
+      working CUDAExecutionProvider, inference runs on GPU. Otherwise we
+      transparently fall back to CPU.
     - language is ISO 639-3 (rus, eng, ukr, ...). MMS romanizes everything
       via uroman internally so non-Latin scripts work transparently.
     """
     from ctc_forced_aligner import (
-        Alignment, generate_emissions, get_alignments,
+        Tokenizer, generate_emissions, get_alignments,
         get_spans, load_audio, postprocess_results, preprocess_text,
         MODEL_URL, ensure_onnx_model,
     )
 
     ALIGNER_CACHE.mkdir(parents=True, exist_ok=True)
-    target = ALIGNER_CKPT
+    ckpt = ALIGNER_CKPT
     # Reuse a legacy download if present (saves ~1.2 GB re-download)
-    if not target.exists() and os.path.exists(LEGACY_CKPT):
+    if not ckpt.exists() and os.path.exists(LEGACY_CKPT):
         try:
-            os.symlink(LEGACY_CKPT, target)
+            os.symlink(LEGACY_CKPT, ckpt)
             print(f"  [aligner] reused legacy checkpoint via symlink", flush=True)
         except OSError:
             import shutil
-            shutil.copy2(LEGACY_CKPT, target)
+            shutil.copy2(LEGACY_CKPT, ckpt)
             print(f"  [aligner] reused legacy checkpoint via copy", flush=True)
 
+    if not ckpt.exists():
+        print(f"  [aligner] downloading MMS-300m ONNX (~1.2 GB) → {ckpt}", flush=True)
+    ensure_onnx_model(str(ckpt), MODEL_URL)
+
     t0 = time.time()
-    if not target.exists():
-        print(f"  [aligner] downloading MMS-300m ONNX (~1.2 GB) → {target}", flush=True)
-    ensure_onnx_model(str(target), MODEL_URL)
-    holder = Alignment(str(target))
-    model = holder.alignment_model
-    tokenizer = holder.alignment_tokenizer
-    print(f"  [aligner] loaded in {time.time()-t0:.1f}s", flush=True)
+    want_cuda = (device == "cuda") or (device != "cpu" and torch.cuda.is_available())
+    model, used = _make_session(str(ckpt), want_cuda)
+    tokenizer = Tokenizer()
+    on_gpu = used == "CUDAExecutionProvider"
+    print(f"  [aligner] loaded on {'GPU' if on_gpu else 'CPU'} in {time.time()-t0:.1f}s", flush=True)
 
     try:
         t0 = time.time()
@@ -83,7 +106,9 @@ def align(audio_path: str, lyrics_text: str, language: str = "rus",
             return {"language": language, "duration": duration,
                     "model": "mms-forced-aligner", "segments": []}
 
-        emissions, stride = generate_emissions(model, waveform, batch_size=4)
+        # Bigger batch on GPU for throughput; CPU stays modest.
+        batch_size = 16 if on_gpu else 4
+        emissions, stride = generate_emissions(model, waveform, batch_size=batch_size)
         tokens, text_starred = preprocess_text(
             flat_text, romanize=True, language=language)
         segments_raw, scores, blank = get_alignments(emissions, tokens, tokenizer)
@@ -102,12 +127,12 @@ def align(audio_path: str, lyrics_text: str, language: str = "rus",
         line_idx = 0
         cur_words: list = []
         cur_norm = ""
-        target = _norm(lyric_lines[line_idx]) if lyric_lines else ""
+        target_norm = _norm(lyric_lines[line_idx]) if lyric_lines else ""
 
         for w in flat_words:
             cur_words.append(w)
             cur_norm += _norm(w["word"])
-            while target and cur_norm.startswith(target):
+            while target_norm and cur_norm.startswith(target_norm):
                 out_segments.append({
                     "start": cur_words[0]["start"],
                     "end":   cur_words[-1]["end"],
@@ -117,8 +142,8 @@ def align(audio_path: str, lyrics_text: str, language: str = "rus",
                 line_idx += 1
                 cur_words.clear()
                 cur_norm = ""
-                target = _norm(lyric_lines[line_idx]) if line_idx < len(lyric_lines) else ""
-                if not target:
+                target_norm = _norm(lyric_lines[line_idx]) if line_idx < len(lyric_lines) else ""
+                if not target_norm:
                     break
 
         if cur_words:
@@ -142,10 +167,11 @@ def align(audio_path: str, lyrics_text: str, language: str = "rus",
         return {
             "language": language,
             "duration": duration,
-            "model":    "mms-forced-aligner",
+            "model":    "mms-forced-aligner" + ("-cuda" if on_gpu else ""),
             "segments": out_segments,
         }
     finally:
+        del model
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

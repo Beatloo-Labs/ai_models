@@ -40,9 +40,15 @@ PyYAML==6.0.3
 # ---- gigaam runtime deps ----
 hydra-core==1.3.2
 onnx==1.19.1
-onnxruntime==1.23.2
 sentencepiece==0.2.0
 tqdm==4.67.3
+
+# ---- onnxruntime: GPU build on Linux (lets the MMS aligner run on CUDA);
+# CPU build everywhere else (macOS, Windows-without-CUDA).
+# onnxruntime-gpu ships the CPU executor too, so the same `import onnxruntime`
+# code path works on either build.
+onnxruntime-gpu==1.23.2; platform_system == "Linux"
+onnxruntime==1.23.2; platform_system != "Linux"
 
 # ---- forced alignment (MMS-300m, ONNX) ----
 ctc-forced-aligner==1.0.2
